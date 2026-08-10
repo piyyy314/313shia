@@ -14,10 +14,11 @@ interface MeshLink {
 
 export const ConnectivityMesh: React.FC<{ satellites: Satellite[], selectedSat: Satellite }> = ({ satellites, selectedSat }) => {
   const [links, setLinks] = useState<MeshLink[]>([]);
-  const [rotation, setRotation] = useState(0);
 
   useEffect(() => {
     // Generate some inter-satellite links
+    // PERFORMANCE OPTIMIZATION: Completely removed unused 'rotation' state and its 50ms interval,
+    // which was triggering 20 useless full-component re-renders per second!
     const newLinks: MeshLink[] = [];
     for (let i = 0; i < satellites.length; i++) {
       // Connect to next 2 satellites to form a ring/mesh
@@ -31,11 +32,6 @@ export const ConnectivityMesh: React.FC<{ satellites: Satellite[], selectedSat: 
       }
     }
     setLinks(newLinks);
-
-    const interval = setInterval(() => {
-      setRotation(prev => (prev + 0.2) % 360);
-    }, 50);
-    return () => clearInterval(interval);
   }, [satellites.length]);
 
   const exportMeshReport = () => {
