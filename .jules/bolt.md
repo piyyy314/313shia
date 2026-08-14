@@ -1,5 +1,5 @@
 # Bolt's Journal - Critical Learnings Only
 
-## 2025-02-22 - [PQC Hex Conversion Performance]
-**Learning:** Converting standard array representations of large binary data like ML-DSA post-quantum cryptography keys and signatures (e.g. 4032 and 3300 bytes) via `Array.from().map().join()` generates considerable garbage collection overhead and CPU latency. Using pre-computed lookup tables and direct string/array concat is >10x faster.
-**Action:** Replace high-frequency byte-to-hex and hex-to-byte utility functions with pre-computed lookup tables for O(1) character lookup and minimal garbage collection.
+## 2026-08-13 - [PQC Hex Conversion Performance Bottlenecks]
+**Learning:** Naive hexadecimal serialization (`Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')`) and deserialization (`parseInt(hex.substring(i, i + 2), 16)`) in cryptographic tasks like ML-DSA-65 keys/signatures create severe performance bottlenecks due to massive object allocation and substring slicing. Using precomputed lookup tables (LUT) for encoding and byte values for decoding completely avoids intermediate heap/garbage collection overhead and yields substantial speedups.
+**Action:** Always replace naive string-manipulation-based hexadecimal transformations with LUT-based algorithms when handling post-quantum cryptography payloads or large typed arrays.
