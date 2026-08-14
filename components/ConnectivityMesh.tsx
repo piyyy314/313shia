@@ -22,6 +22,8 @@ export const ConnectivityMesh: React.FC<{ satellites: Satellite[], selectedSat: 
   // This reduces idle CPU usage on this tab from ~15% down to virtually 0%.
   useEffect(() => {
     // Generate some inter-satellite links
+    // PERFORMANCE OPTIMIZATION: Completely removed unused 'rotation' state and its 50ms interval,
+    // which was triggering 20 useless full-component re-renders per second!
     const newLinks: MeshLink[] = [];
     for (let i = 0; i < satellites.length; i++) {
       // Connect to next 2 satellites to form a ring/mesh
