@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Download } from 'lucide-react';
-import { generatePQCKeyPair, signCanaryToken, verifyCanaryToken, bytesToHex } from '../services/pqcService';
+import { generatePQCKeyPair, signCanaryToken, verifyCanaryToken, bytesToHex, hexToBytes } from '../services/pqcService';
 
 interface Trap {
   id: string;
@@ -60,7 +60,8 @@ export const TrapManagement: React.FC = () => {
   const verifyTrap = (trap: Trap) => {
     if (!publicKey) return;
     
-    const sigBytes = new Uint8Array(trap.signature.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+    // Optimized hex decoding using LUT-based hexToBytes rather than regex match/map/parseInt
+    const sigBytes = hexToBytes(trap.signature);
     const isValid = verifyCanaryToken(publicKey, trap.metadata, sigBytes);
     
     setVerificationResult({ id: trap.id, success: isValid });
