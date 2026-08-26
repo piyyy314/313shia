@@ -8,7 +8,8 @@ interface Props {
   onExport?: () => void;
 }
 
-export const LookAngleCard: React.FC<Props> = ({ angles, satellite, onExport }) => {
+// Memoize LookAngleCard to avoid unnecessary re-renders when parent (App) updates state (e.g., telemetry ticks, jamming/weather toggles)
+export const LookAngleCard = React.memo(({ angles, satellite, onExport }: Props) => {
   const handleLocalExport = () => {
     if (onExport) {
       onExport();
@@ -84,4 +85,4 @@ export const LookAngleCard: React.FC<Props> = ({ angles, satellite, onExport }) 
       </div>
     </div>
   );
-};
+});
