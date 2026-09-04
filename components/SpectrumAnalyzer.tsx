@@ -43,6 +43,11 @@ export const SpectrumAnalyzer: React.FC = () => {
         ctx.stroke();
       }
 
+      // Performance optimization: Track peak power and peak index inline during the loop
+      // to avoid calling Math.max(...spectrum) twice and spectrum.indexOf() every frame in 60 FPS animation loops.
+      let maxPower = -Infinity;
+      let maxIdx = 0;
+
       // Update Spectrum Data
       for (let i = 0; i < dataPoints; i++) {
         // Base Noise
@@ -57,7 +62,13 @@ export const SpectrumAnalyzer: React.FC = () => {
         val += 40 * Math.exp(-(dist2 * dist2) / 8);
 
         // Smoothing
-        spectrum[i] = spectrum[i] * 0.7 + val * 0.3;
+        const smoothed = spectrum[i] * 0.7 + val * 0.3;
+        spectrum[i] = smoothed;
+
+        if (smoothed > maxPower) {
+          maxPower = smoothed;
+          maxIdx = i;
+        }
       }
 
       // Draw Gradient Spectrum
@@ -94,9 +105,8 @@ export const SpectrumAnalyzer: React.FC = () => {
       ctx.stroke();
 
       // Peak Marker
-      const maxIdx = spectrum.indexOf(Math.max(...spectrum));
       const peakX = (canvas.width / (dataPoints - 1)) * maxIdx;
-      const peakY = canvas.height - ((Math.max(...spectrum) - (-120)) / ((-20) - (-120)) * canvas.height);
+      const peakY = canvas.height - ((maxPower - (-120)) / ((-20) - (-120)) * canvas.height);
       
       ctx.beginPath();
       ctx.arc(peakX, peakY, 4, 0, Math.PI * 2);
@@ -108,7 +118,7 @@ export const SpectrumAnalyzer: React.FC = () => {
       const now = Date.now();
       if (now - lastUpdate > 250) {
         setPeakFreq(centerFreq + (maxIdx / dataPoints - 0.5) * (span / 1000));
-        setPeakPower(spectrum[maxIdx]);
+        setPeakPower(maxPower);
         lastUpdate = now;
       }
 
