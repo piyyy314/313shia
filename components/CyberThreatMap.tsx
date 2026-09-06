@@ -7,6 +7,9 @@ import { Download } from 'lucide-react';
 export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  // PERFORMANCE OPTIMIZATION: Maintain threat objects in a useRef to avoid calling React setThreats on every
+  // 60 FPS animation frame, which previously caused endless effect re-runs, frame counter resets, and 60 re-renders/sec.
+  const threatsRef = useRef<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -33,21 +36,34 @@ export const CyberThreatMap: React.FC = () => {
         ctx.stroke();
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
+      // Filter out threats randomly (~1% chance per frame)
+      let updated = threatsRef.current.filter(() => Math.random() > 0.01);
+      let stateChanged = updated.length !== threatsRef.current.length;
+
+      // Add new threat every 60 frames (~1s) if under cap of 10
+      if (frame % 60 === 0 && updated.length < 10) {
+        updated = [
+          ...updated,
+          {
             id: Date.now() + Math.random(),
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height,
             type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
             intensity: Math.random() * 100
-          }];
-        }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+          }
+        ];
+        stateChanged = true;
+      }
 
-      threats.forEach(t => {
+      threatsRef.current = updated;
+
+      // Sync React state for UI headers/legends/reports only when threat list changes (~1 FPS instead of 60 FPS)
+      if (stateChanged) {
+        setThreats(updated);
+      }
+
+      // Draw "threats" directly from ref in the 60 FPS canvas loop
+      threatsRef.current.forEach(t => {
         const pulse = (Math.sin(frame / 10) + 1) / 2;
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
@@ -69,7 +85,7 @@ export const CyberThreatMap: React.FC = () => {
 
     const handle = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(handle);
-  }, [threats]);
+  }, []);
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
