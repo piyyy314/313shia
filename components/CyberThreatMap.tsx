@@ -1,12 +1,25 @@
-
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
 import { Download } from 'lucide-react';
+
+interface Threat {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  intensity: number;
+}
+
+const THREAT_TYPES = ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'];
 
 export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  const [threats, setThreats] = useState<Threat[]>([]);
+  // PERFORMANCE OPTIMIZATION: Back threats state with a ref (`threatsRef`) for the 60 FPS animation loop.
+  // Previously, `setThreats` was called on every frame of `requestAnimationFrame`, causing 60 React re-renders/sec,
+  // continuously re-triggering the `useEffect([threats])` cleanup and resetting the frame counter to 0.
+  // Using `threatsRef` decouples high-frequency canvas drawing from React state updates, reducing re-renders from 60/s to ~1/s.
+  const threatsRef = useRef<Threat[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -14,7 +27,9 @@ export const CyberThreatMap: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    let handle: number;
     let frame = 0;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -33,22 +48,28 @@ export const CyberThreatMap: React.FC = () => {
         ctx.stroke();
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
+      // Periodically update threats array (every 60 frames ~ 1 sec)
+      if (frame % 60 === 0) {
+        let updated = threatsRef.current.filter(() => Math.random() > 0.05);
+        if (updated.length < 10 && Math.random() > 0.1) {
+          updated.push({
             id: Date.now() + Math.random(),
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height,
-            type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
+            type: THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)],
             intensity: Math.random() * 100
-          }];
+          });
         }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+        threatsRef.current = updated;
+        setThreats([...updated]);
+      }
 
-      threats.forEach(t => {
-        const pulse = (Math.sin(frame / 10) + 1) / 2;
+      // Draw threats onto canvas using ref data
+      const currentThreats = threatsRef.current;
+      const pulse = (Math.sin(frame / 10) + 1) / 2;
+      const len = currentThreats.length;
+      for (let i = 0; i < len; i++) {
+        const t = currentThreats[i];
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
         ctx.arc(t.x, t.y, 10 + pulse * 20, 0, Math.PI * 2);
@@ -62,14 +83,14 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 8px JetBrains Mono';
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
-      });
+      }
 
-      requestAnimationFrame(animate);
+      handle = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
+    handle = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(handle);
-  }, [threats]);
+  }, []);
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
@@ -116,7 +137,7 @@ STIA_CMD: END_THREAT_LOG
       </div>
       <canvas ref={canvasRef} width="800" height="400" className="w-full h-64 bg-slate-950 rounded-2xl border border-slate-900" />
       <div className="mt-4 grid grid-cols-4 gap-4">
-         {['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'].map(type => (
+         {THREAT_TYPES.map(type => (
            <div key={type} className="bg-slate-900/50 p-2 rounded-lg border border-slate-800 flex flex-col items-center">
               <span className="text-[7px] text-slate-500 font-bold uppercase">{type}</span>
               <span className="text-xs font-black text-white mono">{threats.filter(t => t.type === type).length}</span>
