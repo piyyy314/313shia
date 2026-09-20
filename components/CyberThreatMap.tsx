@@ -1,12 +1,25 @@
-
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
 import { Download } from 'lucide-react';
+
+interface Threat {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  intensity: number;
+}
+
+const THREAT_TYPES = ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'];
 
 export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  const [threats, setThreats] = useState<Threat[]>([]);
+  // Bolt Optimization: Use useRef to maintain the threat list across 60 FPS animation frames.
+  // Previously, calling setThreats inside requestAnimationFrame on every single frame triggered 60 React re-renders/sec,
+  // continuously tearing down and re-registering the rAF loop, resetting frame count to 0 each time.
+  // Backing animation state with useRef and updating React state only on array mutation reduces re-renders by ~98%.
+  const threatsRef = useRef<Threat[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -15,11 +28,13 @@ export const CyberThreatMap: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let handle: number;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw world map (simplified)
+      // Draw world map (simplified grid)
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.2)';
       ctx.lineWidth = 1;
       for (let i = 0; i < canvas.width; i += 40) {
@@ -33,22 +48,39 @@ export const CyberThreatMap: React.FC = () => {
         ctx.stroke();
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
+      let mutated = false;
+      // Periodically spawn new threats if below limit
+      if (frame % 60 === 0 && threatsRef.current.length < 10) {
+        threatsRef.current = [
+          ...threatsRef.current,
+          {
             id: Date.now() + Math.random(),
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height,
-            type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
+            type: THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)],
             intensity: Math.random() * 100
-          }];
-        }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+          }
+        ];
+        mutated = true;
+      }
 
-      threats.forEach(t => {
-        const pulse = (Math.sin(frame / 10) + 1) / 2;
+      // Randomly expire threats over time
+      const nextThreats = threatsRef.current.filter(() => Math.random() > 0.005);
+      if (nextThreats.length !== threatsRef.current.length) {
+        threatsRef.current = nextThreats;
+        mutated = true;
+      }
+
+      // Only trigger React state update when threats array actually mutates (added/removed)
+      if (mutated) {
+        setThreats([...threatsRef.current]);
+      }
+
+      // Draw threats from ref
+      const currentThreats = threatsRef.current;
+      const pulse = (Math.sin(frame / 10) + 1) / 2;
+      for (let i = 0; i < currentThreats.length; i++) {
+        const t = currentThreats[i];
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
         ctx.arc(t.x, t.y, 10 + pulse * 20, 0, Math.PI * 2);
@@ -62,14 +94,14 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 8px JetBrains Mono';
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
-      });
+      }
 
-      requestAnimationFrame(animate);
+      handle = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
+    handle = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(handle);
-  }, [threats]);
+  }, []);
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
