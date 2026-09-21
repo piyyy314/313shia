@@ -1,12 +1,30 @@
-
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
 import { Download } from 'lucide-react';
 
-export const CyberThreatMap: React.FC = () => {
+interface Threat {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  intensity: number;
+}
+
+/**
+ * Performance Optimization:
+ * Previously, this component updated React state (`setThreats`) on every animation frame (60fps)
+ * and included `threats` in `useEffect` dependencies. This caused the component to re-render 60 times/sec,
+ * continuously destroying and recreating the animation frame loop.
+ *
+ * Optimization:
+ * 1. Store mutable active threats in `threatsRef` for smooth 60fps canvas rendering without triggering React re-renders.
+ * 2. Only update React state (`setThreats`) when threats are added or removed, reducing re-renders by ~98% (~1/sec).
+ * 3. Wrap component in `React.memo` to prevent unnecessary re-renders when parent components re-render.
+ */
+export const CyberThreatMap: React.FC = React.memo(() => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  const [threats, setThreats] = useState<Threat[]>([]);
+  const threatsRef = useRef<Threat[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -15,11 +33,13 @@ export const CyberThreatMap: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let animationFrameId: number;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw world map (simplified)
+      // Draw world map (simplified grid)
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.2)';
       ctx.lineWidth = 1;
       for (let i = 0; i < canvas.width; i += 40) {
@@ -33,21 +53,40 @@ export const CyberThreatMap: React.FC = () => {
         ctx.stroke();
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
+      let currentThreats = threatsRef.current;
+      let threatsChanged = false;
+
+      // Periodically spawn new threats
+      if (frame % 60 === 0 && currentThreats.length < 10) {
+        currentThreats = [
+          ...currentThreats,
+          {
             id: Date.now() + Math.random(),
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height,
             type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
             intensity: Math.random() * 100
-          }];
-        }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+          }
+        ];
+        threatsChanged = true;
+      }
 
-      threats.forEach(t => {
+      // Randomly expire existing threats
+      const filteredThreats = currentThreats.filter(t => Math.random() > 0.01);
+      if (filteredThreats.length !== currentThreats.length) {
+        currentThreats = filteredThreats;
+        threatsChanged = true;
+      }
+
+      threatsRef.current = currentThreats;
+
+      // Only trigger React state update when threat list structure changes
+      if (threatsChanged) {
+        setThreats(currentThreats);
+      }
+
+      // Draw active threats on canvas
+      currentThreats.forEach(t => {
         const pulse = (Math.sin(frame / 10) + 1) / 2;
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
@@ -64,12 +103,12 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
       });
 
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(handle);
-  }, [threats]);
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []); // Empty dependency array: animation loop runs continuously without teardown/re-creation
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
@@ -125,4 +164,4 @@ STIA_CMD: END_THREAT_LOG
       </div>
     </div>
   );
-};
+});
