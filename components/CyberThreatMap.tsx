@@ -4,9 +4,24 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Download } from 'lucide-react';
 
+interface Threat {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  intensity: number;
+}
+
+const THREAT_TYPES = ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'];
+
 export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  const [threats, setThreats] = useState<Threat[]>([]);
+
+  // PERFORMANCE OPTIMIZATION: Track active threats in a ref for the 60 FPS animation loop.
+  // Drawing directly from `threatsRef.current` avoids invoking `setThreats` on every frame,
+  // eliminating 60 React component re-renders per second and continuous animation frame teardown/recreation.
+  const threatsRef = useRef<Threat[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -15,6 +30,8 @@ export const CyberThreatMap: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let animationFrameId: number;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -33,21 +50,36 @@ export const CyberThreatMap: React.FC = () => {
         ctx.stroke();
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
-            id: Date.now() + Math.random(),
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
-            intensity: Math.random() * 100
-          }];
-        }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+      // Update threats state in ref
+      let changed = false;
+      if (frame % 60 === 0 && threatsRef.current.length < 10) {
+        threatsRef.current.push({
+          id: Date.now() + Math.random(),
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          type: THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)],
+          intensity: Math.random() * 100
+        });
+        changed = true;
+      }
 
-      threats.forEach(t => {
+      const initialCount = threatsRef.current.length;
+      if (initialCount > 0) {
+        const filtered = threatsRef.current.filter(() => Math.random() > 0.01);
+        if (filtered.length !== initialCount) {
+          threatsRef.current = filtered;
+          changed = true;
+        }
+      }
+
+      // Synchronize React state only when threat membership/count actually changes
+      // to update UI metrics and report exports without triggering re-renders every 16ms
+      if (changed) {
+        setThreats([...threatsRef.current]);
+      }
+
+      // Draw active threats directly from ref
+      threatsRef.current.forEach(t => {
         const pulse = (Math.sin(frame / 10) + 1) / 2;
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
@@ -64,12 +96,12 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
       });
 
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(handle);
-  }, [threats]);
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
