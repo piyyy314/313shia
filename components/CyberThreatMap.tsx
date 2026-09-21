@@ -4,9 +4,21 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Download } from 'lucide-react';
 
+interface Threat {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  intensity: number;
+}
+
 export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  // Optimization: Storing threats array in a ref (threatsRef) allows running a single, persistent
+  // requestAnimationFrame loop with [] dependencies. This eliminates 60 React component re-renders
+  // per second and constant useEffect teardown/re-registration, updating React state only when threats mutate.
+  const threatsRef = useRef<Threat[]>([]);
+  const [threats, setThreats] = useState<Threat[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -15,40 +27,57 @@ export const CyberThreatMap: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let animId: number;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw world map (simplified)
+      // Batched grid line drawing: single beginPath and stroke instead of 30+ separate calls per frame
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.2)';
       ctx.lineWidth = 1;
+      ctx.beginPath();
       for (let i = 0; i < canvas.width; i += 40) {
-        ctx.beginPath();
         ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
-        ctx.stroke();
       }
       for (let i = 0; i < canvas.height; i += 40) {
-        ctx.beginPath();
         ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
-        ctx.stroke();
+      }
+      ctx.stroke();
+
+      let changed = false;
+      if (frame % 60 === 0 && threatsRef.current.length < 10) {
+        threatsRef.current.push({
+          id: Date.now() + Math.random(),
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
+          intensity: Math.random() * 100
+        });
+        changed = true;
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
-            id: Date.now() + Math.random(),
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
-            intensity: Math.random() * 100
-          }];
+      const prevLen = threatsRef.current.length;
+      if (prevLen > 0) {
+        const filtered = threatsRef.current.filter(() => Math.random() > 0.01);
+        if (filtered.length !== prevLen) {
+          threatsRef.current = filtered;
+          changed = true;
         }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+      }
 
-      threats.forEach(t => {
-        const pulse = (Math.sin(frame / 10) + 1) / 2;
+      // Sync React state only when threat count/array changes (~1 Hz instead of 60 Hz)
+      if (changed) {
+        setThreats([...threatsRef.current]);
+      }
+
+      // Draw threats from ref
+      const currentThreats = threatsRef.current;
+      const pulse = (Math.sin(frame / 10) + 1) / 2;
+      ctx.font = 'bold 8px JetBrains Mono';
+
+      for (let i = 0; i < currentThreats.length; i++) {
+        const t = currentThreats[i];
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
         ctx.arc(t.x, t.y, 10 + pulse * 20, 0, Math.PI * 2);
@@ -60,16 +89,15 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fill();
 
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 8px JetBrains Mono';
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
-      });
+      }
 
-      requestAnimationFrame(animate);
+      animId = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(handle);
-  }, [threats]);
+    animId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animId);
+  }, []);
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
