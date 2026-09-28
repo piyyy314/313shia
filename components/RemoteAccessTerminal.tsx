@@ -79,12 +79,16 @@ export const RemoteAccessTerminal: React.FC<{ addMissionLog?: (detail: string, s
         addOutput('bin/  etc/  home/  root/  sys/  var/  secret.vault', 'out');
       } else if (cmd === 'whoami') {
         addOutput('operator_ghost', 'out');
-      } else if (cmd === 'uname -a') {
+      } else if (cmd === 'uname' || cmd === 'uname -a') {
         addOutput(`Linux ${activeNode.id} 5.15.0-generic #1 SAT_TACTICAL`, 'out');
       } else if (cmd === 'cat secret.vault') {
         addOutput('PERMISSION DENIED: Entry requires ROOT privileges.', 'err');
       } else if (cmd === 'help') {
         addOutput('Available: ls, whoami, uname, help, exit, netstat', 'sys');
+      } else if (cmd === 'netstat') {
+        addOutput('Proto Recv-Q Send-Q Local Address           Foreign Address         State\n' +
+                  'tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTENING\n' +
+                  'tcp        0      0 127.0.0.1:8080          0.0.0.0:*               LISTEN', 'out');
       } else if (cmd === 'exit') {
         addOutput('Closing connection...', 'sys');
         setActiveNode(null);
@@ -208,9 +212,9 @@ export const RemoteAccessTerminal: React.FC<{ addMissionLog?: (detail: string, s
                {activeNode && !isConnecting && (
                  <>
                    {terminalOutput.map(out => (
-                     <div key={out.id} className={`flex space-x-3 ${out.type === 'err' ? 'text-red-500' : out.type === 'sys' ? 'text-amber-500' : out.type === 'in' ? 'text-white font-bold' : 'text-slate-400'}`}>
+                     <div key={out.id} className={`flex space-x-3 ${out.type === 'err' ? 'text-red-400' : out.type === 'sys' ? 'text-cyan-500' : out.type === 'in' ? 'text-white font-bold' : 'text-slate-500'}`}>
                         {out.type === 'in' && <span className="text-cyan-500 shrink-0">{"\u003E\u003E\u003E"}</span>}
-                        <span className="leading-relaxed">{out.text}</span>
+                        <span className="leading-relaxed whitespace-pre-wrap">{out.text}</span>
                      </div>
                    ))}
                  </>

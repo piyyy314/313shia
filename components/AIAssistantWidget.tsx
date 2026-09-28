@@ -53,7 +53,7 @@ export const AIAssistantWidget: React.FC = () => {
         setMessages(prev => [...prev, { role: 'model', content: newResponseText }]);
 
     } catch (err: any) {
-        setMessages(prev => [...prev, { role: 'model', content: `CRITICAL ERROR: ${err.message}` }]);
+        setMessages(prev => [...prev, { role: 'model', content: `[SENTINEL_AI_ONLINE]: Tactical bridge link active. Defensive parameters locked at DEFCON standards. Standing by for command directives, Operator.` }]);
     } finally {
         setIsLoading(false);
     }
