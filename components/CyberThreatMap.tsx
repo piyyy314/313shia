@@ -1,12 +1,29 @@
-
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
 import { Download } from 'lucide-react';
+
+interface Threat {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  intensity: number;
+}
+
+const THREAT_TYPES = ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'];
+
+const INITIAL_THREATS: Threat[] = [
+  { id: 1, x: 220, y: 120, type: 'DDOS', intensity: 85 },
+  { id: 2, x: 480, y: 210, type: 'INTRUSION', intensity: 62 },
+  { id: 3, x: 640, y: 160, type: 'SPOOFING', intensity: 45 },
+];
 
 export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  const [threats, setThreats] = useState<Threat[]>(INITIAL_THREATS);
+  // Use a ref to back state values within persistent requestAnimationFrame loop, avoiding
+  // 60 FPS React re-renders, animation frame teardown, and frame count resets.
+  const threatsRef = useRef<Threat[]>(INITIAL_THREATS);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -15,39 +32,60 @@ export const CyberThreatMap: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let animationFrameId: number;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw world map (simplified)
+      // Draw world map (simplified grid)
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.2)';
       ctx.lineWidth = 1;
       for (let i = 0; i < canvas.width; i += 40) {
         ctx.beginPath();
-        ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, canvas.height);
         ctx.stroke();
       }
       for (let i = 0; i < canvas.height; i += 40) {
         ctx.beginPath();
-        ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
+        ctx.moveTo(0, i);
+        ctx.lineTo(canvas.width, i);
         ctx.stroke();
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
-            id: Date.now() + Math.random(),
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
-            intensity: Math.random() * 100
-          }];
-        }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+      // Periodically spawn or remove threats without triggering 60 FPS React state updates
+      let changed = false;
+      if (frame % 60 === 0 && threatsRef.current.length < 10) {
+        threatsRef.current.push({
+          id: Date.now() + Math.random(),
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          type: THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)],
+          intensity: Math.random() * 100,
+        });
+        changed = true;
+      }
 
-      threats.forEach(t => {
+      // Expire threats periodically if count > 3
+      if (frame % 120 === 0 && threatsRef.current.length > 3) {
+        const initialCount = threatsRef.current.length;
+        threatsRef.current = threatsRef.current.filter(() => Math.random() > 0.2);
+        if (threatsRef.current.length !== initialCount) {
+          changed = true;
+        }
+      }
+
+      // Sync to React state only when threat array actually changes
+      if (changed) {
+        setThreats([...threatsRef.current]);
+      }
+
+      // Render threat indicators
+      ctx.font = 'bold 8px JetBrains Mono';
+      const activeThreats = threatsRef.current;
+      for (let i = 0; i < activeThreats.length; i++) {
+        const t = activeThreats[i];
         const pulse = (Math.sin(frame / 10) + 1) / 2;
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
@@ -60,16 +98,15 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fill();
 
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 8px JetBrains Mono';
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
-      });
+      }
 
-      requestAnimationFrame(animate);
+      animationFrameId = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(handle);
-  }, [threats]);
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
