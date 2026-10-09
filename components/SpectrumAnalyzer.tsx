@@ -112,19 +112,8 @@ export const SpectrumAnalyzer: React.FC = () => {
       ctx.fillStyle = '#ef4444';
       ctx.fill();
       
-<<<<<<< HEAD
-      // PERFORMANCE OPTIMIZATION: Throttle state updates to 250ms interval (4fps)
-      // to avoid triggering expensive React reconciliations/re-renders 60 times per second.
-      const now = Date.now();
-      if (now - lastUpdate > 250) {
-        setPeakFreq(centerFreq + (maxIdx / dataPoints - 0.5) * (span / 1000));
-        setPeakPower(maxPower);
-        lastUpdate = now;
-      }
-=======
       setPeakFreq(centerFreq + (maxIdx / dataPoints - 0.5) * (span / 1000));
-      setPeakPower(spectrum[maxIdx]);
->>>>>>> origin/main
+      setPeakPower(maxPower);
 
       animationFrame = requestAnimationFrame(animate);
     };
