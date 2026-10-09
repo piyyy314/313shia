@@ -2,8 +2,8 @@
 import { Satellite, SatelliteStatus } from '../types.ts';
 import { COMMON_SATELLITES } from '../constants.ts';
 
-// Create a shallow copy to simulate initial database state (Satellite objects contain only primitives)
-let mockSatelliteData: Satellite[] = COMMON_SATELLITES.map(sat => ({ ...sat }));
+// Create a mutable copy to simulate a database
+let mockSatelliteData: Satellite[] = JSON.parse(JSON.stringify(COMMON_SATELLITES));
 
 const ALL_STATUSES: SatelliteStatus[] = ['active', 'offline', 'maintenance'];
 
@@ -35,9 +35,8 @@ export const fetchSatelliteStatusUpdates = async (): Promise<Satellite[]> => {
         }
       }
       
-      // Performance Optimization: Use array shallow copy `.map(sat => ({ ...sat }))` instead of
-      // `JSON.parse(JSON.stringify(mockSatelliteData))` to avoid JSON serialization overhead and string allocation.
-      resolve(mockSatelliteData.map(sat => ({ ...sat })));
+      // Return a deep copy to prevent direct state mutation
+      resolve(JSON.parse(JSON.stringify(mockSatelliteData)));
     }, 500); // 500ms network latency simulation
   });
 };

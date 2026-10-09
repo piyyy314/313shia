@@ -21,7 +21,6 @@ export const SpectrumAnalyzer: React.FC = () => {
     let animationFrame: number;
     const dataPoints = 200;
     const spectrum = new Array(dataPoints).fill(-110);
-    let lastUpdate = 0; // Performance optimization: Throttle state updates to reduce React reconciliation overhead
     
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -113,6 +112,7 @@ export const SpectrumAnalyzer: React.FC = () => {
       ctx.fillStyle = '#ef4444';
       ctx.fill();
       
+<<<<<<< HEAD
       // PERFORMANCE OPTIMIZATION: Throttle state updates to 250ms interval (4fps)
       // to avoid triggering expensive React reconciliations/re-renders 60 times per second.
       const now = Date.now();
@@ -121,6 +121,10 @@ export const SpectrumAnalyzer: React.FC = () => {
         setPeakPower(maxPower);
         lastUpdate = now;
       }
+=======
+      setPeakFreq(centerFreq + (maxIdx / dataPoints - 0.5) * (span / 1000));
+      setPeakPower(spectrum[maxIdx]);
+>>>>>>> origin/main
 
       animationFrame = requestAnimationFrame(animate);
     };

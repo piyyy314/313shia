@@ -44,9 +44,11 @@ export const RadioInterceptSuite: React.FC<{ addMissionLog?: (detail: string, st
     const data = buffer.data;
 
     const draw = () => {
-      // Shift data up using native TypedArray copyWithin (~100x faster than manual element-by-element loop)
+      // Shift data up
       const rowSize = width * 4;
-      data.copyWithin(0, rowSize);
+      for (let i = 0; i < (height - 1) * rowSize; i++) {
+        data[i] = data[i + rowSize];
+      }
 
       // Generate new bottom row
       const lastRowOffset = (height - 1) * rowSize;
