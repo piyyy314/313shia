@@ -8,6 +8,11 @@ export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
 
+  // Ref to hold threat state within high-frequency requestAnimationFrame loop
+  // Prevents 60 FPS React re-renders and animation teardown/re-registration
+  const threatsRef = useRef(threats);
+  threatsRef.current = threats;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -15,6 +20,8 @@ export const CyberThreatMap: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let animId: number;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -33,21 +40,33 @@ export const CyberThreatMap: React.FC = () => {
         ctx.stroke();
       }
 
-      // Draw "threats"
-      setThreats(prev => {
-        if (frame % 60 === 0 && prev.length < 10) {
-          return [...prev, {
-            id: Date.now() + Math.random(),
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
-            intensity: Math.random() * 100
-          }];
-        }
-        return prev.filter(t => Math.random() > 0.01);
-      });
+      // Update threats in ref & trigger React state update ONLY when threats are added or expired
+      let currentThreats = threatsRef.current;
+      let stateChanged = false;
 
-      threats.forEach(t => {
+      if (frame % 60 === 0 && currentThreats.length < 10) {
+        currentThreats = [...currentThreats, {
+          id: Date.now() + Math.random(),
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
+          intensity: Math.random() * 100
+        }];
+        stateChanged = true;
+      }
+
+      const activeThreats = currentThreats.filter(t => Math.random() > 0.01);
+      if (activeThreats.length !== currentThreats.length) {
+        currentThreats = activeThreats;
+        stateChanged = true;
+      }
+
+      if (stateChanged) {
+        threatsRef.current = currentThreats;
+        setThreats(currentThreats);
+      }
+
+      currentThreats.forEach(t => {
         const pulse = (Math.sin(frame / 10) + 1) / 2;
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
         ctx.beginPath();
@@ -64,12 +83,12 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
       });
 
-      requestAnimationFrame(animate);
+      animId = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(handle);
-  }, [threats]);
+    animId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animId);
+  }, []);
 
   const exportThreatReport = () => {
     if (threats.length === 0) return;
