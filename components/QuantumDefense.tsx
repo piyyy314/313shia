@@ -35,6 +35,13 @@ export const QuantumDefense: React.FC<Props> = ({ isStealthMode, addMissionLog }
     const aetherCanvasRef = useRef<HTMLCanvasElement>(null);
     const breachTriggeredRef = useRef(false);
     
+    // Performance optimization: backing state in ref to avoid tearing down
+    // and re-registering animation frame loops & re-allocating particle arrays on state updates
+    const aetherSaturationRef = useRef(aetherSaturation);
+    useEffect(() => {
+        aetherSaturationRef.current = aetherSaturation;
+    }, [aetherSaturation]);
+
     const effectiveQkdStatus = isStealthMode ? 'AETHER_RESONANCE' : qkdStatus;
     const isCritical = effectiveQkdStatus === 'EAVESDROP_DETECTED';
 
@@ -52,7 +59,7 @@ export const QuantumDefense: React.FC<Props> = ({ isStealthMode, addMissionLog }
         if (!ctx) return;
 
         let frame = 0;
-        const particles: any[] = [];
+        const particles: { x: number; y: number; vx: number; vy: number; life: number }[] = [];
         for (let i = 0; i < 30; i++) {
             particles.push({
                 x: Math.random() * canvas.width,
@@ -65,9 +72,10 @@ export const QuantumDefense: React.FC<Props> = ({ isStealthMode, addMissionLog }
 
         const animate = () => {
             frame++;
+            const sat = aetherSaturationRef.current;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            ctx.strokeStyle = `rgba(168, 85, 247, ${0.1 * aetherSaturation})`;
+            ctx.strokeStyle = `rgba(168, 85, 247, ${0.1 * sat})`;
             ctx.beginPath();
             for (let i = 0; i < canvas.width; i += 20) {
                 ctx.moveTo(i, 0);
@@ -75,25 +83,29 @@ export const QuantumDefense: React.FC<Props> = ({ isStealthMode, addMissionLog }
             }
             ctx.stroke();
 
-            particles.forEach(p => {
-                p.x += p.vx * (1 + aetherSaturation);
-                p.y += p.vy * (1 + aetherSaturation);
+            // Performance optimization: Batch particle drawing into a single path call and
+            // calculate fillStyle once per frame, reducing 30 fill calls and 30 string allocations per frame to 1.
+            ctx.fillStyle = `rgba(168, 85, 247, ${0.5 * sat})`;
+            ctx.beginPath();
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                p.x += p.vx * (1 + sat);
+                p.y += p.vy * (1 + sat);
                 if (p.x < 0) p.x = canvas.width;
-                if (p.x > canvas.width) p.x = 0;
+                else if (p.x > canvas.width) p.x = 0;
                 if (p.y < 0) p.y = canvas.height;
-                if (p.y > canvas.height) p.y = 0;
+                else if (p.y > canvas.height) p.y = 0;
 
-                ctx.fillStyle = `rgba(168, 85, 247, ${p.life * aetherSaturation})`;
-                ctx.beginPath();
+                ctx.moveTo(p.x + 1, p.y);
                 ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
-                ctx.fill();
-            });
+            }
+            ctx.fill();
 
             requestAnimationFrame(animate);
         };
         const h = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(h);
-    }, [aetherSaturation]);
+    }, []);
     
     const addLocalLog = (type: QuantumEvent['type'], severity: QuantumEvent['severity'], message: string) => {
         const newEvent: QuantumEvent = {
