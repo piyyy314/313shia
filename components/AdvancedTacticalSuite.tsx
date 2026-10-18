@@ -54,6 +54,24 @@ const KNOWN_FINGERPRINTS: RFFingerprint[] = [
   { id: 'FP-UNKNOWN', hardware: 'Non-Standard FPGA', jitter: '5.6ns', phaseDrift: '0.45°/s', confidence: 32 }
 ];
 
+// Precomputed lookup table for fast hexadecimal conversion without array/string allocations
+const HEX_LUT: string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += HEX_LUT[bytes[i]];
+  }
+  return hex;
+}
+
+// Static triangulation station coordinates to prevent allocation in 60 FPS animation loop
+const TRIANGULATION_STATIONS = [
+  { x: 50, y: 50 },
+  { x: 350, y: 50 },
+  { x: 200, y: 350 }
+];
+
 export const AdvancedTacticalSuite: React.FC = () => {
   const [fluxData, setFluxData] = useState(generateFluxData());
   const [selectedFingerprint, setSelectedFingerprint] = useState<RFFingerprint | null>(null);
@@ -120,9 +138,8 @@ export const AdvancedTacticalSuite: React.FC = () => {
     const encoder = new TextEncoder();
     const bytes = encoder.encode(dvbPayload);
     const dflHex = bytes.length.toString(16).padStart(4, '0');
-    const payloadHex = Array.from(bytes)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    // Use LUT-based fast hex conversion to avoid intermediate Array.from and .map allocations
+    const payloadHex = bytesToHex(bytes);
     const frame = `${MATYPE}${UPL}${dflHex}${payloadHex}`;
     setCraftedFrame(frame);
   };
@@ -247,42 +264,62 @@ STIA_CMD: QUARANTINE_REQUESTED
     craftDVBS2Frame();
   }, [dvbPayload]);
 
+  // Use refs to back high-frequency state updates inside the requestAnimationFrame loop
+  const isTriangulatingRef = useRef(isTriangulating);
+  const triangulatedPosRef = useRef(triangulatedPos);
+
+  useEffect(() => {
+    isTriangulatingRef.current = isTriangulating;
+  }, [isTriangulating]);
+
+  useEffect(() => {
+    triangulatedPosRef.current = triangulatedPos;
+  }, [triangulatedPos]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // Cache static radial gradient outside 60 FPS animation loop
+    const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 180);
+    gradient.addColorStop(0, 'rgba(6, 182, 212, 0)');
+    gradient.addColorStop(1, 'rgba(6, 182, 212, 0.1)');
+
     let frame = 0;
+    let animId: number;
+
     const draw = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
 
-      // Grid
+      // Grid: Batch all lines into a single path to reduce stroke calls from 20 to 1 per frame
       ctx.strokeStyle = 'rgba(148, 163, 184, 0.1)';
       ctx.lineWidth = 1;
+      ctx.beginPath();
       for (let i = 0; i < 10; i++) {
-        ctx.beginPath(); ctx.moveTo(i * 40, 0); ctx.lineTo(i * 40, 400); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, i * 40); ctx.lineTo(400, i * 40); ctx.stroke();
+        const pos = i * 40;
+        ctx.moveTo(pos, 0); ctx.lineTo(pos, 400);
+        ctx.moveTo(0, pos); ctx.lineTo(400, pos);
       }
+      ctx.stroke();
 
-      // Radar Concentric Circles
+      // Radar Concentric Circles: Batch all arcs into a single stroke call with moveTo to prevent connecting lines
       ctx.strokeStyle = 'rgba(6, 182, 212, 0.2)';
+      ctx.beginPath();
       for (let r = 1; r <= 3; r++) {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, r * 60, 0, Math.PI * 2);
-        ctx.stroke();
+        const radius = r * 60;
+        ctx.moveTo(centerX + radius, centerY);
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       }
+      ctx.stroke();
 
       // Rotating Sweep
       const sweepAngle = (frame * 0.02) % (Math.PI * 2);
-      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 180);
-      gradient.addColorStop(0, 'rgba(6, 182, 212, 0)');
-      gradient.addColorStop(1, 'rgba(6, 182, 212, 0.1)');
-      
       ctx.fillStyle = gradient;
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
@@ -291,31 +328,28 @@ STIA_CMD: QUARANTINE_REQUESTED
       ctx.fill();
 
       // Detection Lines if Triangulating
-      if (isTriangulating) {
+      if (isTriangulatingRef.current) {
         ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
         ctx.lineWidth = 2;
-        const pulse = (Math.sin(frame * 0.1) + 1) / 2;
         
-        // Emulating 3 stations
-        const stations = [{x: 50, y: 50}, {x: 350, y: 50}, {x: 200, y: 350}];
-        stations.forEach((s, idx) => {
+        TRIANGULATION_STATIONS.forEach((s) => {
           ctx.beginPath();
           ctx.moveTo(s.x, s.y);
-          // Animate line reaching for center area
           const targetX = 200 + (Math.random() - 0.5) * 20;
           const targetY = 200 + (Math.random() - 0.5) * 20;
           ctx.lineTo(targetX, targetY);
           ctx.stroke();
           
           ctx.fillStyle = '#ef4444';
-          ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fill();
         });
       }
 
       // Final Triangulated Point
-      if (triangulatedPos && !isTriangulating) {
-        const tx = (triangulatedPos.x / 100) * canvas.width;
-        const ty = (triangulatedPos.y / 100) * canvas.height;
+      const currentPos = triangulatedPosRef.current;
+      if (currentPos && !isTriangulatingRef.current) {
+        const tx = (currentPos.x / 100) * canvas.width;
+        const ty = (currentPos.y / 100) * canvas.height;
         
         ctx.strokeStyle = '#22d3ee';
         ctx.lineWidth = 2;
@@ -330,11 +364,12 @@ STIA_CMD: QUARANTINE_REQUESTED
         ctx.fillText("TARGET_LOCKED", tx + 10, ty - 10);
       }
 
-      requestAnimationFrame(draw);
+      animId = requestAnimationFrame(draw);
     };
-    const animId = requestAnimationFrame(draw);
+
+    animId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animId);
-  }, [isTriangulating, triangulatedPos]);
+  }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-12">
