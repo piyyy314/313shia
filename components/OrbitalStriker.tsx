@@ -14,6 +14,11 @@ interface StrikeResult {
 export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?: any) => void }> = ({ addMissionLog }) => {
   const [selectedVector, setSelectedVector] = useState<'KINETIC' | 'EMP' | 'LASER'>('KINETIC');
   const [targetCoord, setTargetCoord] = useState({ x: 50, y: 50 });
+  // Ref to back targetCoord inside the high-frequency requestAnimationFrame loop
+  // Prevents tearing down and re-registering the loop on every coordinate update
+  const targetCoordRef = useRef(targetCoord);
+  targetCoordRef.current = targetCoord;
+
   const [isCharging, setIsCharging] = useState(false);
   const [chargeProgress, setChargeProgress] = useState(0);
   const [history, setHistory] = useState<StrikeResult[]>([]);
@@ -36,24 +41,31 @@ export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw grid
+      // Draw grid: Batch all line path commands into a single stroke call
+      // Reduces 80 canvas stroke calls per frame down to 1 call in 60 FPS animation loop
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1;
+      ctx.beginPath();
       for (let i = 0; i < canvas.width; i += 20) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+        ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+        ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
       }
+      ctx.stroke();
 
       // Draw crosshair
-      const px = (targetCoord.x / 100) * canvas.width;
-      const py = (targetCoord.y / 100) * canvas.height;
+      const coord = targetCoordRef.current;
+      const px = (coord.x / 100) * canvas.width;
+      const py = (coord.y / 100) * canvas.height;
       
       ctx.strokeStyle = '#22d3ee';
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(px, py, 40, 0, Math.PI * 2); ctx.stroke();
       
-      ctx.beginPath(); ctx.moveTo(px - 60, py); ctx.lineTo(px + 60, py); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(px, py - 60); ctx.lineTo(px, py + 60); ctx.stroke();
+      // Batch crosshair lines into a single stroke
+      ctx.beginPath();
+      ctx.moveTo(px - 60, py); ctx.lineTo(px + 60, py);
+      ctx.moveTo(px, py - 60); ctx.lineTo(px, py + 60);
+      ctx.stroke();
 
       // Scan animation
       const scanY = (Date.now() / 20) % canvas.height;
@@ -65,7 +77,7 @@ export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?
 
     draw();
     return () => cancelAnimationFrame(animationFrame);
-  }, [targetCoord]);
+  }, []);
 
   const executeStrike = () => {
     if (isCharging) return;
