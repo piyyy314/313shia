@@ -1,26 +1,49 @@
 
+// Pre-allocated typed array buffer for ASCII char frequency counting (0-255).
+// Prevents intermediate object allocations and string heap overhead during forensic scanning.
+const ASCII_COUNTS = new Uint32Array(256);
+
 /**
  * Calculates Shannon Entropy of a string.
  * High entropy (> 4.5 for URLs) often indicates obfuscation, 
  * randomized paths, or generated DGA domains.
+ *
+ * Optimized to use a pre-allocated typed array buffer with charCodeAt fast-paths
+ * for ASCII strings, avoiding object/array allocations and string slice overhead.
  */
 export const calculateEntropy = (data: string): number => {
   if (!data) return 0;
   
   const len = data.length;
-  const frequencies: Record<string, number> = {};
-  
+  ASCII_COUNTS.fill(0);
+  let nonAsciiMap: Map<number, number> | null = null;
+
   for (let i = 0; i < len; i++) {
-    const char = data[i];
-    frequencies[char] = (frequencies[char] || 0) + 1;
+    const code = data.charCodeAt(i);
+    if (code < 256) {
+      ASCII_COUNTS[code]++;
+    } else {
+      if (!nonAsciiMap) nonAsciiMap = new Map();
+      nonAsciiMap.set(code, (nonAsciiMap.get(code) || 0) + 1);
+    }
   }
-  
+
   let entropy = 0;
-  Object.values(frequencies).forEach(count => {
-    const p = count / len;
-    entropy -= p * Math.log2(p);
-  });
-  
+  for (let i = 0; i < 256; i++) {
+    const count = ASCII_COUNTS[i];
+    if (count > 0) {
+      const p = count / len;
+      entropy -= p * Math.log2(p);
+    }
+  }
+
+  if (nonAsciiMap) {
+    for (const count of nonAsciiMap.values()) {
+      const p = count / len;
+      entropy -= p * Math.log2(p);
+    }
+  }
+
   return entropy;
 };
 
