@@ -29,13 +29,30 @@ const TARGET_FILES = [
   { id: 'f7', name: 'source_code_repo.zip', type: 'ZIP', size: '1.2 GB' }
 ];
 
+// Precomputed lookup table for byte to hex conversion to avoid array allocations on render
+const HEX_LUT = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0').toUpperCase());
+
+function generateDecryptionKey(): string {
+  const bytes = new Uint8Array(8);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 8; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  let hex = '0x';
+  for (let i = 0; i < 8; i++) {
+    hex += HEX_LUT[bytes[i]];
+  }
+  return hex + '-DECRYPT';
+}
+
 export const RansomwareSim: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [encryptedFiles, setEncryptedFiles] = useState<EncryptedFile[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [showRansomNote, setShowRansomNote] = useState(false);
-  
-  const decryptionKey = "0x" + Array.from({length: 16}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase() + "-DECRYPT";
+  // Maintain stable decryptionKey state per simulation run to avoid re-generating on every render
+  const [decryptionKey, setDecryptionKey] = useState<string>(generateDecryptionKey);
 
   useEffect(() => {
     if (isRunning) {
@@ -52,12 +69,13 @@ export const RansomwareSim: React.FC = () => {
         setLogs(prev => [...prev, `[!!!] CRITICAL: ALL TARGETS ENCRYPTED. DROPPING RANSOM_NOTE.txt`]);
       }
     }
-  }, [isRunning, encryptedFiles]);
+  }, [isRunning, encryptedFiles.length]);
 
   const deployPayload = () => {
     setEncryptedFiles([]);
     setLogs(['[+] Initializing Cryptoworm Payload...', '[+] Injecting into explorer.exe', '[+] Disabling Volume Shadow Copies (vssadmin delete shadows /all /quiet)']);
     setShowRansomNote(false);
+    setDecryptionKey(generateDecryptionKey());
     setIsRunning(true);
   };
 
