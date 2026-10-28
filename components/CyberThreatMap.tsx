@@ -26,19 +26,19 @@ export const CyberThreatMap: React.FC = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw world map (simplified)
+      // Draw world map grid lines
+      // PERFORMANCE OPTIMIZATION: Batch all grid lines into a single path and single stroke call
+      // Reduces grid draw calls from 30 (20 vertical + 10 horizontal) to 1 per frame
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.2)';
       ctx.lineWidth = 1;
+      ctx.beginPath();
       for (let i = 0; i < canvas.width; i += 40) {
-        ctx.beginPath();
         ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
-        ctx.stroke();
       }
       for (let i = 0; i < canvas.height; i += 40) {
-        ctx.beginPath();
         ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
-        ctx.stroke();
       }
+      ctx.stroke();
 
       // Update threats in ref & trigger React state update ONLY when threats are added or expired
       let currentThreats = threatsRef.current;
@@ -66,6 +66,10 @@ export const CyberThreatMap: React.FC = () => {
         setThreats(currentThreats);
       }
 
+      // PERFORMANCE OPTIMIZATION: Hoist context settings outside loops and batch solid dot fills
+      ctx.font = 'bold 8px JetBrains Mono';
+      ctx.fillStyle = '#fff';
+
       currentThreats.forEach(t => {
         const pulse = (Math.sin(frame / 10) + 1) / 2;
         ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
@@ -73,15 +77,20 @@ export const CyberThreatMap: React.FC = () => {
         ctx.arc(t.x, t.y, 10 + pulse * 20, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
-        ctx.fill();
-
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 8px JetBrains Mono';
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
       });
+
+      // Batch inner threat center dots into a single path call
+      if (currentThreats.length > 0) {
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        currentThreats.forEach(t => {
+          ctx.moveTo(t.x + 4, t.y);
+          ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
+        });
+        ctx.fill();
+      }
 
       animId = requestAnimationFrame(animate);
     };
