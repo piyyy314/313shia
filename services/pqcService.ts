@@ -35,16 +35,42 @@ export const verifyCanaryToken = (publicKey: Uint8Array, trapMetadata: string, s
   return ml_dsa65.verify(signature, msg, publicKey);
 };
 
-export const bytesToHex = (bytes: Uint8Array) => {
-  return Array.from(bytes)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+// Precomputed lookup table for byte-to-hex string conversion
+const HEX_LUT = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
+
+// Precomputed lookup table for ASCII hex char to nibble value conversion
+const HEX_VAL = new Int8Array(256).fill(-1);
+for (let i = 0; i < 10; i++) HEX_VAL[48 + i] = i; // '0'-'9'
+for (let i = 0; i < 6; i++) {
+  HEX_VAL[65 + i] = 10 + i; // 'A'-'F'
+  HEX_VAL[97 + i] = 10 + i; // 'a'-'f'
+}
+
+/**
+ * Optimized Uint8Array to hexadecimal string converter.
+ * Uses a precomputed lookup table to eliminate intermediate Array/string allocations
+ * and string formatting overhead for high-frequency cryptographic operations (e.g. PQC ML-DSA-65).
+ */
+export const bytesToHex = (bytes: Uint8Array): string => {
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += HEX_LUT[bytes[i]];
+  }
+  return hex;
 };
 
-export const hexToBytes = (hex: string) => {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+/**
+ * Optimized hexadecimal string to Uint8Array converter.
+ * Uses charCodeAt lookup and bitwise arithmetic to avoid substring slicing
+ * and parseInt calls during PQC signature/key deserialization.
+ */
+export const hexToBytes = (hex: string): Uint8Array => {
+  const len = hex.length;
+  const bytes = new Uint8Array(len >> 1);
+  for (let i = 0; i < len; i += 2) {
+    const high = HEX_VAL[hex.charCodeAt(i)];
+    const low = HEX_VAL[hex.charCodeAt(i + 1)];
+    bytes[i >> 1] = (high << 4) | low;
   }
   return bytes;
 };
