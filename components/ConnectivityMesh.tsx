@@ -16,7 +16,6 @@ interface MeshLink {
 
 export const ConnectivityMesh: React.FC<{ satellites: Satellite[], selectedSat: Satellite }> = ({ satellites, selectedSat }) => {
   const [links, setLinks] = useState<MeshLink[]>([]);
-  const [rotation, setRotation] = useState(0);
   const [meshMode, setMeshMode] = useState<'CLASSICAL' | 'QUANTUM' | 'HYBRID'>('QUANTUM');
 
   useEffect(() => {
@@ -35,11 +34,9 @@ export const ConnectivityMesh: React.FC<{ satellites: Satellite[], selectedSat: 
       }
     }
     setLinks(newLinks);
-
-    const interval = setInterval(() => {
-      setRotation(prev => (prev + 0.2) % 360);
-    }, 50);
-    return () => clearInterval(interval);
+    // Bolt Optimization: Removed unused rotation state and 50ms (20 Hz) setInterval loop.
+    // The rotation state was never rendered in the DOM/JSX, yet triggered 20 full component
+    // re-renders per second (1,200 per minute) including all child trees and SVGs.
   }, [satellites.length]);
 
   const exportMeshReport = () => {
