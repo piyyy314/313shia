@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Radio, Zap, Volume2, ShieldX, WifiOff, AlertTriangle, Activity } from 'lucide-react';
 
@@ -6,9 +6,19 @@ export const SignalJammer: React.FC<{ addMissionLog?: (detail: string, status?: 
   const [frequency, setFrequency] = useState(2.4);
   const [power, setPower] = useState(40);
   const [isJamming, setIsJamming] = useState(false);
-  const [noiseLevel, setNoiseLevel] = useState<number[]>(Array(50).fill(10));
+  const [noiseLevel, setNoiseLevel] = useState<number[]>(() => Array(50).fill(10));
   const [selectedBand, setSelectedBand] = useState<'VHF' | 'UHF' | 'SHF'>('UHF');
   const [sessionData, setSessionData] = useState<{ timestamp: string, frequency: number, power: number, noise: number }[]>([]);
+
+  // Performance optimization: use refs to back frequency, power, and jamming state inside the 150ms interval.
+  // This avoids tearing down and rebuilding the timer on continuous slider adjustments and prevents
+  // triggering side-effects (setSessionData) from within pure state updater functions.
+  const frequencyRef = useRef(frequency);
+  frequencyRef.current = frequency;
+  const powerRef = useRef(power);
+  powerRef.current = power;
+  const isJammingRef = useRef(isJamming);
+  isJammingRef.current = isJamming;
 
   const handleExportJammingReport = () => {
     const reportData = {
@@ -52,25 +62,35 @@ export const SignalJammer: React.FC<{ addMissionLog?: (detail: string, status?: 
   };
 
   useEffect(() => {
+    // Stable 150ms telemetry interval: values accessed via refs to prevent interval re-subscription on slider drags
     const interval = setInterval(() => {
+      const active = isJammingRef.current;
+      const currentPower = powerRef.current;
+      const currentFreq = frequencyRef.current;
+      const currentNoise = active
+        ? currentPower + (Math.random() * 20)
+        : 5 + (Math.random() * 5);
+
       setNoiseLevel(prev => {
-        const next = [...prev.slice(1)];
-        let currentNoise = 5 + (Math.random() * 5);
-        if (isJamming) {
-          currentNoise = power + (Math.random() * 20);
-          next.push(currentNoise);
-        } else {
-          next.push(currentNoise);
-        }
-        
-        if (isJamming) {
-            setSessionData(sd => [...sd, { timestamp: new Date().toISOString(), frequency, power, noise: currentNoise }]);
-        }
+        const next = prev.slice(1);
+        next.push(currentNoise);
         return next;
       });
+
+      if (active) {
+        // Update session telemetry at interval tick level; cap at 500 samples to prevent unbounded memory growth
+        setSessionData(sd => {
+          const entry = { timestamp: new Date().toISOString(), frequency: currentFreq, power: currentPower, noise: currentNoise };
+          if (sd.length >= 500) {
+            return [...sd.slice(1), entry];
+          }
+          return [...sd, entry];
+        });
+      }
     }, 150);
+
     return () => clearInterval(interval);
-  }, [isJamming, power, frequency]);
+  }, []);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-4">
