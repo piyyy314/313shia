@@ -1,14 +1,28 @@
-
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
+
+interface LogEntry {
+  time: string;
+  text: string;
+}
 
 export const NeuralProcessor: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [reconstructedData, setReconstructedData] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Performance Optimization: Ref-backed state prevents canvas animation teardown/restart
+  // every 100ms when progress updates during signal synthesis.
+  const isProcessingRef = useRef(isProcessing);
+  const progressRef = useRef(progress);
+  const reconstructedDataRef = useRef(reconstructedData);
+
+  useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
+  useEffect(() => { progressRef.current = progress; }, [progress]);
+  useEffect(() => { reconstructedDataRef.current = reconstructedData; }, [reconstructedData]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -17,10 +31,18 @@ export const NeuralProcessor: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let handle: number;
+
+    // Persistent 60 FPS animation loop with ref-based state reads.
+    // Eliminates ~50 RAF teardowns/resubscriptions and frame resets during a progress cycle.
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
+      const currentIsProcessing = isProcessingRef.current;
+      const currentProgress = progressRef.current;
+      const currentReconstructedData = reconstructedDataRef.current;
+
       // Draw "noisy" signal
       ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
       ctx.lineWidth = 1;
@@ -32,11 +54,11 @@ export const NeuralProcessor: React.FC = () => {
       ctx.stroke();
 
       // Draw "reconstructed" signal if processing or done
-      if (isProcessing || reconstructedData) {
+      if (currentIsProcessing || currentReconstructedData) {
         ctx.strokeStyle = '#22d3ee';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        const limit = isProcessing ? (progress / 100) * canvas.width : canvas.width;
+        const limit = currentIsProcessing ? (currentProgress / 100) * canvas.width : canvas.width;
         for (let i = 0; i < limit; i++) {
           const y = canvas.height / 2 + Math.sin(i / 10 + frame / 5) * 20;
           if (i === 0) ctx.moveTo(i, y); else ctx.lineTo(i, y);
@@ -44,17 +66,26 @@ export const NeuralProcessor: React.FC = () => {
         ctx.stroke();
       }
 
-      requestAnimationFrame(animate);
+      handle = requestAnimationFrame(animate);
     };
 
-    const handle = requestAnimationFrame(animate);
+    handle = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(handle);
-  }, [isProcessing, progress, reconstructedData]);
+  }, []);
+
+  const createLog = (text: string): LogEntry => ({
+    time: new Date().toLocaleTimeString([], { hour12: false }),
+    text
+  });
 
   const startReconstruction = () => {
     setIsProcessing(true);
     setProgress(0);
-    setLogs(["[SYSTEM] Initializing Neural Engine...", "[SYSTEM] Sampling noisy spectrum...", "[SYSTEM] Loading pre-trained weights (SatNet-v4)..."]);
+    setLogs([
+      createLog("[SYSTEM] Initializing Neural Engine..."),
+      createLog("[SYSTEM] Sampling noisy spectrum..."),
+      createLog("[SYSTEM] Loading pre-trained weights (SatNet-v4)...")
+    ]);
     setReconstructedData(null);
 
     const interval = setInterval(() => {
@@ -63,13 +94,17 @@ export const NeuralProcessor: React.FC = () => {
           clearInterval(interval);
           setIsProcessing(false);
           setReconstructedData("DECRYPTED_PAYLOAD_V3: MISSION_SUCCESS // COORDS_LOCKED");
-          setLogs(prevLogs => [...prevLogs, "[SUCCESS] Reconstruction complete.", "[INFO] Signal-to-Noise ratio improved by 14.2dB."]);
+          setLogs(prevLogs => [
+            ...prevLogs,
+            createLog("[SUCCESS] Reconstruction complete."),
+            createLog("[INFO] Signal-to-Noise ratio improved by 14.2dB.")
+          ]);
           return 100;
         }
         
-        if (prev === 20) setLogs(prevLogs => [...prevLogs, "[INFO] Phase alignment in progress..."]);
-        if (prev === 50) setLogs(prevLogs => [...prevLogs, "[INFO] Error correction (LDPC) applied."]);
-        if (prev === 80) setLogs(prevLogs => [...prevLogs, "[INFO] Finalizing waveform synthesis..."]);
+        if (prev === 20) setLogs(prevLogs => [...prevLogs, createLog("[INFO] Phase alignment in progress...")]);
+        if (prev === 50) setLogs(prevLogs => [...prevLogs, createLog("[INFO] Error correction (LDPC) applied.")]);
+        if (prev === 80) setLogs(prevLogs => [...prevLogs, createLog("[INFO] Finalizing waveform synthesis...")]);
         
         return prev + 2;
       });
@@ -145,8 +180,8 @@ export const NeuralProcessor: React.FC = () => {
             <div className="flex-grow bg-slate-950/50 rounded-xl p-4 border border-slate-900 space-y-2 overflow-y-auto h-64 scrollbar-hide">
                {logs.map((log, i) => (
                  <div key={i} className="text-[10px] mono text-slate-400 leading-relaxed">
-                   <span className="text-slate-600 mr-2">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
-                   {log}
+                   <span className="text-slate-600 mr-2">[{log.time}]</span>
+                   {log.text}
                  </div>
                ))}
                {isProcessing && <div className="text-cyan-500 text-[10px] mono animate-pulse">SYNTHESIZING...</div>}
