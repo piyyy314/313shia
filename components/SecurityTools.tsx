@@ -185,26 +185,39 @@ export const SecurityTools: React.FC<Props> = ({
           });
         }
 
-        packets.forEach((p, i) => {
+        // Iterate backwards to update position and safely remove expired items without index skipping
+        for (let i = packets.length - 1; i >= 0; i--) {
+          const p = packets[i];
           p.x += p.speed;
-          if (p.type === 'malicious') {
-             ctx.shadowBlur = 10;
-             ctx.shadowColor = '#ef4444';
-             ctx.fillStyle = '#ef4444';
-          } else {
-             ctx.shadowBlur = 0;
-             ctx.fillStyle = '#22d3ee';
+          if (p.x > canvas.width) {
+            packets.splice(i, 1);
           }
-          ctx.fillRect(p.x, p.y, p.size, p.size);
-          if (p.x > canvas.width) packets.splice(i, 1);
-        });
+        }
+
+        // Performance optimization: Batch packet rendering by color fill style to eliminate state churn
+        // and eliminate expensive per-packet shadowBlur rasterization
+        ctx.fillStyle = '#22d3ee';
+        for (let i = 0; i < packets.length; i++) {
+          const p = packets[i];
+          if (p.type !== 'malicious') {
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+          }
+        }
+
+        ctx.fillStyle = '#ef4444';
+        for (let i = 0; i < packets.length; i++) {
+          const p = packets[i];
+          if (p.type === 'malicious') {
+            ctx.fillRect(p.x - 1, p.y - 1, p.size + 2, p.size + 2);
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+          }
+        }
 
         requestAnimationFrame(animate);
       };
       const h = requestAnimationFrame(animate);
       return () => {
         cancelAnimationFrame(h);
-        ctx.shadowBlur = 0;
       };
     }
   }, [activeTab]);
@@ -235,16 +248,21 @@ export const SecurityTools: React.FC<Props> = ({
                 });
             }
 
-            bursts.forEach((b, i) => {
+            // Iterate backwards to update radii and safely remove expired bursts
+            ctx.lineWidth = 1.5;
+            for (let i = bursts.length - 1; i >= 0; i--) {
+                const b = bursts[i];
                 b.r += b.v;
                 b.alpha -= 0.025;
-                ctx.strokeStyle = `rgba(239, 68, 68, ${b.alpha})`;
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-                ctx.stroke();
-                if (b.alpha <= 0) bursts.splice(i, 1);
-            });
+                if (b.alpha <= 0) {
+                    bursts.splice(i, 1);
+                } else {
+                    ctx.strokeStyle = `rgba(239, 68, 68, ${b.alpha.toFixed(2)})`;
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
 
             ctx.fillStyle = isIpAttacking ? '#ef4444' : '#1e293b';
             ctx.beginPath();
