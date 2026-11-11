@@ -8,8 +8,15 @@ export const QuantumDecryptor: React.FC<{ addMissionLog?: (detail: string, statu
   const [progress, setProgress] = useState(0);
   const [foundKeys, setFoundKeys] = useState<string[]>([]);
   const [currentCipher, setCurrentCipher] = useState('AES-256_GCM_0x7F2A');
-  const [qubits, setQubits] = useState<number[]>(Array(16).fill(0).map(() => Math.random()));
+  // Lazily initialize qubits array to prevent array allocation on every component render
+  const [qubits, setQubits] = useState<number[]>(() => Array(16).fill(0).map(() => Math.random()));
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Ref to hold decryption state inside persistent requestAnimationFrame loop
+  const isDecryptingRef = useRef(isDecrypting);
+  useEffect(() => {
+    isDecryptingRef.current = isDecrypting;
+  }, [isDecrypting]);
 
   const startDecryption = () => {
     if (isDecrypting) return;
@@ -65,16 +72,20 @@ export const QuantumDecryptor: React.FC<{ addMissionLog?: (detail: string, statu
       const centerY = canvas.height / 2;
 
       // Draw Entanglement Lines
-      if (isDecrypting) {
+      // Batch subpaths into a single stroke call to avoid 20 stroke calls per frame
+      if (isDecryptingRef.current) {
         ctx.strokeStyle = 'rgba(34, 211, 238, 0.1)';
         ctx.lineWidth = 1;
+        ctx.beginPath();
         for (let i = 0; i < 20; i++) {
           const x1 = Math.sin(time + i) * 150 + centerX;
           const y1 = Math.cos(time * 0.8 + i) * 100 + centerY;
           const x2 = Math.cos(time + i * 2) * 200 + centerX;
           const y2 = Math.sin(time * 1.2 + i * 0.5) * 150 + centerY;
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
         }
+        ctx.stroke();
       }
 
       // Draw core
@@ -89,7 +100,7 @@ export const QuantumDecryptor: React.FC<{ addMissionLog?: (detail: string, statu
 
     draw();
     return () => cancelAnimationFrame(animationFrame);
-  }, [isDecrypting]);
+  }, []);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-4">
