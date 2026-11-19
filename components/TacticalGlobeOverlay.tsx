@@ -32,6 +32,21 @@ import {
 } from '../utils/tacticalGlobeData';
 import { audioController } from '../services/audioService';
 
+// PERFORMANCE OPTIMIZATION (Bolt):
+// TacticalGlobeOverlay continuously animates in a 60 FPS requestAnimationFrame loop (auto-rotation and radar sweeps).
+// In every frame re-render:
+// 1. Array.from({ length: 361 }, (_, i) => [i - 180, 0]) allocated a 361-element array and 361 coordinate pairs (~21,660 allocations/sec).
+// 2. { type: 'Sphere' } was repeatedly allocated as a new object literal per frame.
+// 3. d3.geoGraticule().step([20, 20]) created a new graticule generator function and generated new GeoJSON geometry per frame.
+// Precomputing and hoisting these invariant geometries eliminates ~22,000 array/object heap allocations per second
+// and avoids garbage collection pressure during continuous globe animation.
+const BASE_SPHERE_GEOJSON: any = { type: 'Sphere' };
+const D3_GRATICULE_GEOJSON: any = d3.geoGraticule().step([20, 20])();
+const EQUATOR_LINE_GEOJSON: any = {
+  type: 'LineString',
+  coordinates: Array.from({ length: 361 }, (_, i) => [i - 180, 0])
+};
+
 interface Props {
   userLoc: Coordinates;
   satellite: Satellite;
@@ -251,7 +266,7 @@ export const TacticalGlobeOverlay: React.FC<Props> = ({
 
     // Base Sphere Globe body
     svg.append('path')
-      .datum({ type: 'Sphere' } as any)
+      .datum(BASE_SPHERE_GEOJSON)
       .attr('d', pathGenerator as any)
       .attr('fill', '#030712')
       .attr('stroke', isStealthMode ? '#9333ea' : '#0e7490')
@@ -259,9 +274,8 @@ export const TacticalGlobeOverlay: React.FC<Props> = ({
 
     // Graticule grid lines
     if (showGraticule) {
-      const graticule = d3.geoGraticule().step([20, 20]);
       svg.append('path')
-        .datum(graticule())
+        .datum(D3_GRATICULE_GEOJSON)
         .attr('d', pathGenerator as any)
         .attr('fill', 'none')
         .attr('stroke', isStealthMode ? 'rgba(147, 51, 234, 0.15)' : 'rgba(14, 116, 144, 0.2)')
@@ -270,7 +284,7 @@ export const TacticalGlobeOverlay: React.FC<Props> = ({
 
       // Equator highlight
       svg.append('path')
-        .datum({ type: 'LineString', coordinates: Array.from({ length: 361 }, (_, i) => [i - 180, 0]) } as any)
+        .datum(EQUATOR_LINE_GEOJSON)
         .attr('d', pathGenerator as any)
         .attr('fill', 'none')
         .attr('stroke', isStealthMode ? 'rgba(192, 132, 252, 0.3)' : 'rgba(56, 189, 248, 0.35)')
