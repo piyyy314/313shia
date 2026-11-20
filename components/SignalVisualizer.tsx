@@ -2,6 +2,15 @@
 import * as React from 'react';
 import { useEffect, useRef } from 'react';
 
+// Static constellation center coordinates.
+// Reusing this constant prevents creating 200+ array objects per animation frame in 60 FPS loops.
+const QUADRANTS: [number, number][] = [
+  [50, 50],
+  [150, 50],
+  [50, 150],
+  [150, 150]
+];
+
 interface Props {
   quality: number; 
   isJamming?: boolean;
@@ -52,12 +61,16 @@ export const SignalVisualizer: React.FC<Props> = ({ quality, isJamming = false, 
         specCtx.stroke();
       }
 
+      // PERFORMANCE OPTIMIZATION:
+      // Hoist loop-invariant `effectiveQuality` computation outside the 400-iteration loop.
+      // Eliminates 399 redundant quality/jamming/rainFade calculations per animation frame (~24k operations/sec at 60 FPS).
+      const effectiveQuality = isStealthMode ? 100 : Math.max(0, (isJamming ? quality - (jammingPower * 1.5) : quality) - (rainFade * 4));
+
       specCtx.strokeStyle = isStealthMode ? '#a855f7' : (isJamming ? '#ef4444' : (rainFade > 5 ? '#fbbf24' : '#22d3ee'));
       specCtx.lineWidth = isStealthMode ? 3 : 2;
       specCtx.beginPath();
       for (let i = 0; i < 400; i++) {
         const distToCenter = Math.abs(200 - i);
-        const effectiveQuality = isStealthMode ? 100 : Math.max(0, (isJamming ? quality - (jammingPower * 1.5) : quality) - (rainFade * 4));
         let signal = distToCenter < 60 ? Math.pow(60 - distToCenter, 1.4) * (effectiveQuality / 100) : 0;
         if (isJamming && distToCenter < 20 && !isStealthMode) {
            signal += (Math.random() - 0.5) * (jammingPower / 10);
@@ -89,11 +102,18 @@ export const SignalVisualizer: React.FC<Props> = ({ quality, isJamming = false, 
       constCtx.clearRect(0, 0, 200, 200);
       constCtx.fillStyle = isStealthMode ? '#a855f7' : (isJamming || (quality - (rainFade * 3)) < 30 ? '#ef4444' : (rainFade > 5 ? '#fbbf24' : '#22d3ee'));
       const spread = isStealthMode ? 1 : (isJamming ? (jammingPower / 2) : Math.max(1, (100 - (quality - (rainFade * 3))) / 4));
-      for(let i=0; i< (isStealthMode ? 8 : 40); i++) {
-        const quadrants = [[50, 50], [150, 50], [50, 150], [150, 150]];
-        quadrants.forEach(([qx, qy]) => {
-          constCtx.fillRect(qx + (Math.random()-0.5)*spread, qy + (Math.random()-0.5)*spread, 1.5, 1.5);
-        });
+
+      // PERFORMANCE OPTIMIZATION:
+      // Replaced inline array creation and forEach callback inside 60 FPS animation loop
+      // with static QUADRANTS array and indexed nested loop.
+      // Eliminates ~205 array allocations and ~160 callback invocations per frame (12.3k allocations/sec at 60 FPS).
+      const pointCount = isStealthMode ? 8 : 40;
+      for (let i = 0; i < pointCount; i++) {
+        for (let q = 0; q < 4; q++) {
+          const qx = QUADRANTS[q][0];
+          const qy = QUADRANTS[q][1];
+          constCtx.fillRect(qx + (Math.random() - 0.5) * spread, qy + (Math.random() - 0.5) * spread, 1.5, 1.5);
+        }
       }
 
       requestAnimationFrame(animate);

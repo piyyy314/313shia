@@ -9,7 +9,8 @@ interface Props {
   isStealthMode: boolean;
 }
 
-const StatusBadge: React.FC<{ status?: SatelliteStatus }> = ({ status }) => {
+// Memoized to prevent unnecessary re-renders of status badges when parent component re-renders (e.g. on satellite selection)
+const StatusBadge: React.FC<{ status?: SatelliteStatus }> = React.memo(({ status }) => {
   const config = {
     active: { color: 'bg-green-500', label: 'ONLINE', pulse: true },
     offline: { color: 'bg-red-500', label: 'OFFLINE', pulse: false },
@@ -25,7 +26,7 @@ const StatusBadge: React.FC<{ status?: SatelliteStatus }> = ({ status }) => {
       </span>
     </div>
   );
-};
+});
 
 export const ConstellationView: React.FC<Props> = ({ satellites, selectedSat, onSatSelect, isStealthMode }) => {
   return (

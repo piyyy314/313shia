@@ -7,6 +7,23 @@ interface Props {
   angles: LookAngles | null;
 }
 
+// Optimization: Precompute horizon obstruction levels and trigonometric lookup tables (LUT)
+// for azimuth angles 0..359.
+// Hoisting these static TypedArrays outside the component prevents allocating a 360-element Array
+// and executing 1,440 trigonometric operations on every 60 FPS requestAnimationFrame loop iteration.
+const MOCK_BLOCKAGE = new Float64Array(360);
+const COS_AZ = new Float64Array(360);
+const SIN_AZ = new Float64Array(360);
+
+for (let i = 0; i < 360; i++) {
+  const noise = Math.sin(i / 10) * 5 + Math.cos(i / 50) * 15;
+  MOCK_BLOCKAGE[i] = Math.max(0, 15 + noise);
+
+  const radAz = (i - 90) * (Math.PI / 180);
+  COS_AZ[i] = Math.cos(radAz);
+  SIN_AZ[i] = Math.sin(radAz);
+}
+
 export const TerrainObstruction: React.FC<Props> = ({ angles }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -47,24 +64,18 @@ export const TerrainObstruction: React.FC<Props> = ({ angles }) => {
       ctx.fillText('E', centerX + radius + 10, centerY + 4);
       ctx.fillText('W', centerX - radius - 10, centerY + 4);
 
-      // Mock horizon blockage data (Azimuth in deg -> Obstacle elevation in deg)
-      const mockBlockage = Array.from({ length: 360 }, (_, i) => {
-        const noise = Math.sin(i / 10) * 5 + Math.cos(i / 50) * 15;
-        return Math.max(0, 15 + noise);
-      });
-
-      // Draw obstruction field
+      // Draw obstruction field using precomputed static lookup tables
       ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
       ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      mockBlockage.forEach((blockElev, az) => {
-        const radAz = (az - 90) * (Math.PI / 180);
+      for (let az = 0; az < 360; az++) {
+        const blockElev = MOCK_BLOCKAGE[az];
         const dist = radius * (1 - blockElev / 90);
-        const x = centerX + Math.cos(radAz) * dist;
-        const y = centerY + Math.sin(radAz) * dist;
+        const x = centerX + COS_AZ[az] * dist;
+        const y = centerY + SIN_AZ[az] * dist;
         if (az === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
+      }
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -76,7 +87,7 @@ export const TerrainObstruction: React.FC<Props> = ({ angles }) => {
         const tx = centerX + Math.cos(radAz) * dist;
         const ty = centerY + Math.sin(radAz) * dist;
 
-        const isObstructed = angles.elevation < mockBlockage[Math.round(angles.azimuth) % 360];
+        const isObstructed = angles.elevation < MOCK_BLOCKAGE[Math.round(angles.azimuth) % 360];
 
         // Pulsing target circle
         const pulse = (Math.sin(Date.now() / 200) + 1) / 2;
