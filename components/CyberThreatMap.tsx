@@ -22,6 +22,11 @@ export const CyberThreatMap: React.FC = () => {
   const threatsRef = useRef<Threat[]>([]);
   const [threats, setThreats] = useState<Threat[]>([]);
 
+  // Ref to hold threat state within high-frequency requestAnimationFrame loop
+  // Prevents 60 FPS React re-renders and animation teardown/re-registration
+  const threatsRef = useRef(threats);
+  threatsRef.current = threats;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -29,6 +34,8 @@ export const CyberThreatMap: React.FC = () => {
     if (!ctx) return;
 
     let frame = 0;
+    let animId: number;
+
     const animate = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -59,6 +66,7 @@ export const CyberThreatMap: React.FC = () => {
         });
         updated = true;
       }
+      ctx.stroke();
 
       // Randomly expire active threat (1% chance per frame)
       if (threatsRef.current.length > 0 && Math.random() < 0.01) {
@@ -83,11 +91,6 @@ export const CyberThreatMap: React.FC = () => {
         ctx.fillStyle = `rgba(239, 68, 68, ${pulseAlpha})`;
         ctx.beginPath();
         ctx.arc(t.x, t.y, 10 + pulse * 20, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = '#fff';

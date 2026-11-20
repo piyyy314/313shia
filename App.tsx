@@ -73,6 +73,8 @@ import { AIAssistantWidget } from './components/AIAssistantWidget';
 import { QuantumEntanglementComms } from './components/QuantumEntanglementComms';
 import { QuantumFirewall } from './components/QuantumFirewall';
 import { SwarmIntelligenceDashboard } from './components/SwarmIntelligenceDashboard';
+import { TacticalGlobeOverlay } from './components/TacticalGlobeOverlay';
+import { QuantumTopologyVisualizer } from './components/QuantumTopologyVisualizer';
 import { audioController } from './services/audioService';
 import { Coordinates, Satellite, LookAngles, WeatherCondition, MainView, SatelliteStatus, TacticalEvent } from './types';
 import { COMMON_SATELLITES } from './constants';
@@ -217,7 +219,7 @@ export const App: React.FC = () => {
   }, [userLoc, selectedSat]);
 
   const VIEW_CATEGORIES = [
-    { name: 'TACTICAL_BASE', views: ['tactical', 'constellation', 'satellite_detail', 'mesh', 'weather', 'geolocator'] },
+    { name: 'TACTICAL_BASE', views: ['tactical', 'globe_overlay', 'constellation', 'satellite_detail', 'mesh', 'quantum_topology', 'weather', 'geolocator'] },
     { name: 'SENTINEL_AI', views: ['sentinel_core', 'quantum_intel_hub', 'palantir_audit', 'bug_bounty_lab'] },
     { name: 'SIGINT_SUITE', views: ['intelligence', 'interception', 'node_scanner', 'spoof_tracer', 'threat_dossier', 'yara_scanner', 'sniffer', 'analyzer', 'specter', 'traps', 'radio_intercept', 'quantum_decryptor', 'biometric_scanner', 'quantum_timeline', 'nmap_scan'] },
     { name: 'ACTIVE_OPS', views: ['tactical_suite', 'warfare', 'planner', 'neural', 'orbital_strike', 'drone_swarm', 'swarm_intelligence', 'kill_chain', 'cyber_attack', 'signal_jamming', 'botnet_command', 'script_env', 'remote_access', 'purple_team', 'zero_day_forge', 'apt_simulator', 'social_toolkit', 'ransomware_sim', 'scada_sc', 'deepfake_comms', 'dark_link', 'wifi_countermeasures', 'electromagnetic_pulse', 'ai_automated_exploit'] },
@@ -472,6 +474,27 @@ export const App: React.FC = () => {
 
             {view === 'mesh' && (
               <ConnectivityMesh satellites={satellites} selectedSat={selectedSat} />
+            )}
+
+            {view === 'globe_overlay' && (
+              <div className="max-w-6xl mx-auto">
+                <TacticalGlobeOverlay 
+                  userLoc={userLoc}
+                  satellite={selectedSat}
+                  isStealthMode={isStealthMode}
+                  onLocChange={setUserLoc}
+                  isFullscreen={false}
+                />
+              </div>
+            )}
+
+            {view === 'quantum_topology' && (
+              <div className="max-w-6xl mx-auto">
+                <QuantumTopologyVisualizer 
+                  satellites={satellites}
+                  selectedSat={selectedSat}
+                />
+              </div>
             )}
 
             {view === 'weather' && (
