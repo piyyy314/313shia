@@ -41,14 +41,19 @@ export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw grid: Batch all line path commands into a single stroke call
-      // Reduces 80 canvas stroke calls per frame down to 1 call in 60 FPS animation loop
+      // OPTIMIZATION: Batch canvas path operations for grid lines into a single path and stroke call.
+      // Eliminates 80 beginPath/stroke calls per frame (~4,800 draw calls/sec at 60 FPS)
+      // and restricts horizontal grid iteration to canvas.height to eliminate off-canvas line calculations.
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let i = 0; i < canvas.width; i += 20) {
-        ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
-        ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
+      for (let x = 0; x < canvas.width; x += 20) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+      }
+      for (let y = 0; y < canvas.height; y += 20) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
       }
       ctx.stroke();
 
@@ -59,18 +64,25 @@ export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?
       
       ctx.strokeStyle = '#22d3ee';
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(px, py, 40, 0, Math.PI * 2); ctx.stroke();
-      
-      // Batch crosshair lines into a single stroke
       ctx.beginPath();
-      ctx.moveTo(px - 60, py); ctx.lineTo(px + 60, py);
-      ctx.moveTo(px, py - 60); ctx.lineTo(px, py + 60);
+      ctx.arc(px, py, 40, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // OPTIMIZATION: Combine crosshair line segments into a single path call.
+      ctx.beginPath();
+      ctx.moveTo(px - 60, py);
+      ctx.lineTo(px + 60, py);
+      ctx.moveTo(px, py - 60);
+      ctx.lineTo(px, py + 60);
       ctx.stroke();
 
       // Scan animation
       const scanY = (Date.now() / 20) % canvas.height;
       ctx.strokeStyle = 'rgba(34, 211, 238, 0.1)';
-      ctx.beginPath(); ctx.moveTo(0, scanY); ctx.lineTo(canvas.width, scanY); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, scanY);
+      ctx.lineTo(canvas.width, scanY);
+      ctx.stroke();
 
       animationFrame = requestAnimationFrame(draw);
     };
