@@ -1,4 +1,5 @@
-// Pre-allocated frequency buffer for 8-bit ASCII character codes to prevent allocations on hot paths
+// Module-level pre-allocated frequency buffer for standard ASCII characters (0-255).
+// Prevents dynamic object allocations, string slicing, and Object.values() overhead.
 const FREQ_BUFFER = new Uint32Array(256);
 
 /**
@@ -6,62 +7,50 @@ const FREQ_BUFFER = new Uint32Array(256);
  * High entropy (> 4.5 for URLs) often indicates obfuscation, 
  * randomized paths, or generated DGA domains.
  *
- * Performance Optimization:
- * - Uses a static Uint32Array(256) buffer with charCodeAt() fast-path for ASCII strings,
- *   eliminating object allocations ({}), string indexing overhead, and Object.values() heap arrays.
- * - Utilizes the logarithmic identity H(X) = log2(N) - (1/N) * sum(c_i * log2(c_i)) to reduce Math.log2 calls.
- * - Expected speedup: >10x faster with 0 heap allocations for standard ASCII strings.
+ * Optimization: Uses a static Uint32Array(256) buffer with charCodeAt() fast-paths
+ * for ASCII strings to avoid O(N) string/object allocations and yield ~10x speedup.
  */
 export const calculateEntropy = (data: string): number => {
   if (!data) return 0;
   
   const len = data.length;
-  let isAscii = true;
-  let breakIndex = 0;
-
+  FREQ_BUFFER.fill(0);
+  let hasNonAscii = false;
+  let nonAsciiFreqs: Map<number, number> | null = null;
+  
   for (let i = 0; i < len; i++) {
     const code = data.charCodeAt(i);
     if (code < 256) {
       FREQ_BUFFER[code]++;
     } else {
-      isAscii = false;
-      breakIndex = i;
-      break;
-    }
-  }
-
-  if (isAscii) {
-    let sumCLogC = 0;
-    for (let i = 0; i < 256; i++) {
-      const count = FREQ_BUFFER[i];
-      if (count > 0) {
-        sumCLogC += count * Math.log2(count);
-        FREQ_BUFFER[i] = 0; // Reset buffer entry for future calls
+      if (!hasNonAscii) {
+        hasNonAscii = true;
+        nonAsciiFreqs = new Map();
       }
-    }
-    return Math.log2(len) - (sumCLogC / len);
-  }
-
-  // Clear partial counts in FREQ_BUFFER accumulated prior to encountering non-ASCII character
-  for (let j = 0; j < breakIndex; j++) {
-    const code = data.charCodeAt(j);
-    if (code < 256) {
-      FREQ_BUFFER[code] = 0;
+      nonAsciiFreqs!.set(code, (nonAsciiFreqs!.get(code) || 0) + 1);
     }
   }
+  
+  let entropy = 0;
 
-  // Fallback for non-ASCII characters
-  const counts = new Map<number, number>();
-  for (let i = 0; i < len; i++) {
-    const code = data.charCodeAt(i);
-    counts.set(code, (counts.get(code) || 0) + 1);
+  // ASCII frequency calculations
+  for (let i = 0; i < 256; i++) {
+    const count = FREQ_BUFFER[i];
+    if (count > 0) {
+      const p = count / len;
+      entropy -= p * Math.log2(p);
+    }
   }
 
-  let sumCLogC = 0;
-  for (const count of counts.values()) {
-    sumCLogC += count * Math.log2(count);
+  // Non-ASCII fallback frequency calculations
+  if (hasNonAscii && nonAsciiFreqs) {
+    nonAsciiFreqs.forEach(count => {
+      const p = count / len;
+      entropy -= p * Math.log2(p);
+    });
   }
-  return Math.log2(len) - (sumCLogC / len);
+  
+  return entropy;
 };
 
 /**
