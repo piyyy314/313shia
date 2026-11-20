@@ -14,6 +14,11 @@ interface StrikeResult {
 export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?: any) => void }> = ({ addMissionLog }) => {
   const [selectedVector, setSelectedVector] = useState<'KINETIC' | 'EMP' | 'LASER'>('KINETIC');
   const [targetCoord, setTargetCoord] = useState({ x: 50, y: 50 });
+  // Ref to back targetCoord inside the high-frequency requestAnimationFrame loop
+  // Prevents tearing down and re-registering the loop on every coordinate update
+  const targetCoordRef = useRef(targetCoord);
+  targetCoordRef.current = targetCoord;
+
   const [isCharging, setIsCharging] = useState(false);
   const [chargeProgress, setChargeProgress] = useState(0);
   const [history, setHistory] = useState<StrikeResult[]>([]);
@@ -53,8 +58,9 @@ export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?
       ctx.stroke();
 
       // Draw crosshair
-      const px = (targetCoord.x / 100) * canvas.width;
-      const py = (targetCoord.y / 100) * canvas.height;
+      const coord = targetCoordRef.current;
+      const px = (coord.x / 100) * canvas.width;
+      const py = (coord.y / 100) * canvas.height;
       
       ctx.strokeStyle = '#22d3ee';
       ctx.lineWidth = 2;
@@ -83,7 +89,7 @@ export const OrbitalStriker: React.FC<{ addMissionLog?: (detail: string, status?
 
     draw();
     return () => cancelAnimationFrame(animationFrame);
-  }, [targetCoord]);
+  }, []);
 
   const executeStrike = () => {
     if (isCharging) return;

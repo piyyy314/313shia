@@ -2,6 +2,7 @@ import * as React from 'react';
 import { motion } from 'motion/react';
 import { ShieldCheck, Lock } from 'lucide-react';
 import { audioController } from '../services/audioService';
+import { bytesToHex } from '../services/pqcService';
 
 export const QuantumFirewall: React.FC = () => {
     const [sessionToken, setSessionToken] = React.useState<string | null>(null);
@@ -9,8 +10,9 @@ export const QuantumFirewall: React.FC = () => {
 
     const generateToken = React.useCallback(() => {
         const array = new Uint8Array(32);
-        window.crypto.getRandomValues(array);
-        const token = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+        const cryptoObj = typeof globalThis !== 'undefined' && globalThis.crypto ? globalThis.crypto : (window as any).crypto;
+        cryptoObj.getRandomValues(array);
+        const token = bytesToHex(array);
         setSessionToken(token);
         audioController.playChirp();
     }, []);
