@@ -1,12 +1,26 @@
-
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
 import { Download } from 'lucide-react';
+
+interface Threat {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  intensity: number;
+}
+
+const THREAT_TYPES = ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'];
 
 export const CyberThreatMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [threats, setThreats] = useState<{id: number, x: number, y: number, type: string, intensity: number}[]>([]);
+  // PERFORMANCE OPTIMIZATION: Back active threats with useRef to persist threat data
+  // within a single requestAnimationFrame loop (useEffect with [] deps).
+  // This avoids tearing down and re-registering the rAF loop every frame, prevents resetting
+  // the frame counter, batches canvas grid draw paths (1 stroke vs 30+), and syncs React state
+  // only on actual threat additions/removals (< 1 FPS React re-renders vs 60 FPS).
+  const threatsRef = useRef<Threat[]>([]);
+  const [threats, setThreats] = useState<Threat[]>([]);
 
   // Ref to hold threat state within high-frequency requestAnimationFrame loop
   // Prevents 60 FPS React re-renders and animation teardown/re-registration
@@ -26,77 +40,68 @@ export const CyberThreatMap: React.FC = () => {
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw world map grid lines
-      // PERFORMANCE OPTIMIZATION: Batch all grid lines into a single path and single stroke call
-      // Reduces grid draw calls from 30 (20 vertical + 10 horizontal) to 1 per frame
+      // Draw world map grid - batched into a single path call
       ctx.strokeStyle = 'rgba(51, 65, 85, 0.2)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let i = 0; i < canvas.width; i += 40) {
-        ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, canvas.height);
       }
       for (let i = 0; i < canvas.height; i += 40) {
-        ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
+        ctx.moveTo(0, i);
+        ctx.lineTo(canvas.width, i);
       }
       ctx.stroke();
 
-      // Update threats in ref & trigger React state update ONLY when threats are added or expired
-      let currentThreats = threatsRef.current;
-      let stateChanged = false;
-
-      if (frame % 60 === 0 && currentThreats.length < 10) {
-        currentThreats = [...currentThreats, {
+      // Update threat collection
+      let updated = false;
+      if (frame % 60 === 0 && threatsRef.current.length < 10) {
+        threatsRef.current.push({
           id: Date.now() + Math.random(),
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          type: ['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'][Math.floor(Math.random() * 4)],
+          type: THREAT_TYPES[Math.floor(Math.random() * THREAT_TYPES.length)],
           intensity: Math.random() * 100
-        }];
-        stateChanged = true;
+        });
+        updated = true;
+      }
+      ctx.stroke();
+
+      // Randomly expire active threat (1% chance per frame)
+      if (threatsRef.current.length > 0 && Math.random() < 0.01) {
+        const removeIdx = Math.floor(Math.random() * threatsRef.current.length);
+        threatsRef.current.splice(removeIdx, 1);
+        updated = true;
       }
 
-      const activeThreats = currentThreats.filter(t => Math.random() > 0.01);
-      if (activeThreats.length !== currentThreats.length) {
-        currentThreats = activeThreats;
-        stateChanged = true;
+      // Only trigger React state update when threats array actually changes
+      if (updated) {
+        setThreats([...threatsRef.current]);
       }
 
-      if (stateChanged) {
-        threatsRef.current = currentThreats;
-        setThreats(currentThreats);
-      }
-
-      // PERFORMANCE OPTIMIZATION: Hoist context settings outside loops and batch solid dot fills
+      // Draw active threats on canvas
+      const pulse = (Math.sin(frame / 10) + 1) / 2;
+      const pulseAlpha = 0.2 + pulse * 0.4;
       ctx.font = 'bold 8px JetBrains Mono';
-      ctx.fillStyle = '#fff';
 
-      currentThreats.forEach(t => {
-        const pulse = (Math.sin(frame / 10) + 1) / 2;
-        ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + pulse * 0.4})`;
+      const activeThreats = threatsRef.current;
+      for (let i = 0; i < activeThreats.length; i++) {
+        const t = activeThreats[i];
+        ctx.fillStyle = `rgba(239, 68, 68, ${pulseAlpha})`;
         ctx.beginPath();
         ctx.arc(t.x, t.y, 10 + pulse * 20, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = '#fff';
         ctx.fillText(`${t.type}_${t.intensity.toFixed(0)}%`, t.x + 10, t.y + 4);
-      });
-
-      // Batch inner threat center dots into a single path call
-      if (currentThreats.length > 0) {
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath();
-        currentThreats.forEach(t => {
-          ctx.moveTo(t.x + 4, t.y);
-          ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
-        });
-        ctx.fill();
       }
 
-      animId = requestAnimationFrame(animate);
+      handle = requestAnimationFrame(animate);
     };
 
-    animId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animId);
+    let handle = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(handle);
   }, []);
 
   const exportThreatReport = () => {
@@ -144,7 +149,7 @@ STIA_CMD: END_THREAT_LOG
       </div>
       <canvas ref={canvasRef} width="800" height="400" className="w-full h-64 bg-slate-950 rounded-2xl border border-slate-900" />
       <div className="mt-4 grid grid-cols-4 gap-4">
-         {['DDOS', 'INTRUSION', 'SPOOFING', 'MALWARE'].map(type => (
+         {THREAT_TYPES.map(type => (
            <div key={type} className="bg-slate-900/50 p-2 rounded-lg border border-slate-800 flex flex-col items-center">
               <span className="text-[7px] text-slate-500 font-bold uppercase">{type}</span>
               <span className="text-xs font-black text-white mono">{threats.filter(t => t.type === type).length}</span>
