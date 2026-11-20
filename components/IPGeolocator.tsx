@@ -24,6 +24,11 @@ export const IPGeolocator: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'RECON' | 'DNS'>('RECON');
   const [domain, setDomain] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Ref to hold isScanning state within high-frequency requestAnimationFrame loop
+  const isScanningRef = useRef(isScanning);
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+  }, [isScanning]);
 
   const resolveDNS = async () => {
     if (!domain) return;
@@ -104,28 +109,33 @@ STIA_CMD: END_REPORT
       frame++;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Radar circles
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+
+      // Radar circles (batched into a single path and stroke call to reduce canvas overhead)
       ctx.strokeStyle = 'rgba(6, 182, 212, 0.1)';
+      ctx.beginPath();
       for (let i = 1; i <= 3; i++) {
-        ctx.beginPath();
-        ctx.arc(canvas.width/2, canvas.height/2, i * 50, 0, Math.PI * 2);
-        ctx.stroke();
+        const radius = i * 50;
+        ctx.moveTo(centerX + radius, centerY);
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       }
+      ctx.stroke();
 
       // Rotating sweep
       const angle = (frame * 0.05) % (Math.PI * 2);
       ctx.strokeStyle = 'rgba(6, 182, 212, 0.5)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(canvas.width/2, canvas.height/2);
+      ctx.moveTo(centerX, centerY);
       ctx.lineTo(
-        canvas.width/2 + Math.cos(angle) * 150,
-        canvas.height/2 + Math.sin(angle) * 150
+        centerX + Math.cos(angle) * 150,
+        centerY + Math.sin(angle) * 150
       );
       ctx.stroke();
 
-      // Scan points if scanning
-      if (isScanning && frame % 10 === 0) {
+      // Scan points if scanning (reads from isScanningRef to avoid effect re-registration and loop tearing)
+      if (isScanningRef.current && frame % 10 === 0) {
           ctx.fillStyle = '#ef4444';
           ctx.beginPath();
           ctx.arc(
@@ -140,7 +150,7 @@ STIA_CMD: END_REPORT
     };
     const animId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animId);
-  }, [isScanning]);
+  }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-12">

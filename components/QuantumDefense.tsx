@@ -34,6 +34,10 @@ export const QuantumDefense: React.FC<Props> = ({ isStealthMode, addMissionLog }
     const [syncPhase, setSyncPhase] = useState<string | null>(null);
     const aetherCanvasRef = useRef<HTMLCanvasElement>(null);
     const breachTriggeredRef = useRef(false);
+    // Bolt Optimization: Keep aetherSaturation in a ref to decouple animation loop lifecycle
+    // from state updates, preventing particle re-allocations and animation loop teardowns.
+    const aetherSaturationRef = useRef(aetherSaturation);
+    aetherSaturationRef.current = aetherSaturation;
     
     // Performance optimization: backing state in ref to avoid tearing down
     // and re-registering animation frame loops & re-allocating particle arrays on state updates
@@ -61,13 +65,13 @@ export const QuantumDefense: React.FC<Props> = ({ isStealthMode, addMissionLog }
         let frame = 0;
         const particles: { x: number; y: number; vx: number; vy: number; life: number }[] = [];
         for (let i = 0; i < 30; i++) {
-            particles.push({
+            particles[i] = {
                 x: Math.random() * canvas.width,
                 y: Math.random() * canvas.height,
                 vx: (Math.random() - 0.5) * 0.5,
                 vy: (Math.random() - 0.5) * 0.5,
                 life: Math.random()
-            });
+            };
         }
 
         const animate = () => {

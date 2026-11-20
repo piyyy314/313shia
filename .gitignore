@@ -9,6 +9,10 @@ lerna-debug.log*
 
 node_modules
 *.local
+dist
+*.zip
+dom_dump.html
+test-output.txt
 
 # Editor directories and files
 .vscode/*
